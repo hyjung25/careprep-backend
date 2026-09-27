@@ -156,3 +156,9 @@ See [prompt_log.md](prompt_log.md) and the frontend's demo/submission documents 
 ## Conversation update (2026-09-27)
 
 Follow-up replies acknowledge the current message using its exact wording (up to 400 characters; longer messages receive a brief acknowledgment). Previously rendered educational passages and already-asked catalog questions are suppressed within the bounded history. Follow-ups ask at most one new question, and new topics still receive their own retrieved passages. Relevant source links remain available. This reduces repetition while preserving the constrained medical response design. The app does not infer a symptom’s cause from volunteered context.
+
+## Urgency provenance update (2026-09-27)
+
+Assistant prose is no longer sent back as symptom history: the chat model receives user history plus IDs of previously asked questions. Model-generated urgency flags receive a separate review with **user messages only**, no assistant warnings or retrieved passages. Confirmed flags require verbatim evidence from valid user-message IDs; ambiguous concentration wording can trigger a clarification question instead. A low pain score never suppresses an actually reported urgent sign. Existing deterministic urgent-phrase matches still bypass the provider. Chat can therefore make a second call when an urgency flag needs review, under one 38-second deadline.
+
+This additional check addresses source confusion and over-inference; it is not clinical triage validation and does not establish safety when `urgent` is false. It can still miss or overinterpret symptoms.

@@ -52,7 +52,7 @@ class SummaryResponse(StrictModel):
     important_unknowns: list[str]
     urgent_notice: str | None = None
 
-QuestionID = Literal['location', 'onset', 'severity', 'progression', 'associated', 'medications', 'questions']
+QuestionID = Literal['focus_clarification', 'location', 'onset', 'severity', 'progression', 'associated', 'medications', 'questions']
 
 class ChatSelection(StrictModel):
     urgent: bool
@@ -79,3 +79,7 @@ class SummarySelection(StrictModel):
 
 class SummaryAudit(StrictModel):
     valid: bool
+
+class UrgencyReview(StrictModel):
+    decision: Literal['urgent', 'clarify_focus', 'continue']
+    evidence: list[Evidence] = Field(max_length=3)

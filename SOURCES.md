@@ -39,3 +39,7 @@ Verified 2026-09-26 against official documentation:
 - [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data): `store:false` does not guarantee zero retention; abuse-monitoring retention and organization settings still apply.
 - [Render FastAPI deployment](https://render.com/docs/deploy-fastapi).
 - [GitHub Pages publishing](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+
+## Additional implementation reference (2026-09-27)
+
+[NHS: Sudden confusion (delirium)](https://www.nhs.uk/symptoms/confusion/) was checked while investigating a concentration-difficulty false escalation. It describes sudden confusion/disorientation and advises immediate help for sudden confusion. The app's design distinction is to clarify ambiguous task-concentration wording, not infer disorientation from it, and never use a low pain score to dismiss a separately reported urgent sign. This is an implementation inference, not a validated classification rule. No NHS content is added to the runtime corpus or copied verbatim; no UK emergency number is inferred from language.

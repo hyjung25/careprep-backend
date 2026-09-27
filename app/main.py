@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from . import provider
 from .schemas import (ChatRequest, ChatResponse, ChatSelection, SummaryRequest,
-                      SummaryResponse, SummarySelection, SummarySection, SummaryAudit)
+                      SummaryResponse, SummarySelection, SummarySection, SummaryAudit, UrgencyReview)
 from .content import (QUESTIONS, FIELDS, URGENT, BOUNDARY, BOUNDARY_TEXT, URGENT_TEXT,
                       INSUFFICIENT, localized, retrieve, source)
 
@@ -109,13 +109,33 @@ async def chat(data: ChatRequest, request: Request):
     rate_check(request)
     if BOUNDARY.search(data.message):
         return ChatResponse(response=localized(BOUNDARY_TEXT, data.language), sources=[], mode='boundary')
-    selection = await provider.generate(provider.CHAT_PROMPT, {
-        'language': data.language, 'message': data.message,
-        'history': [m.model_dump() for m in data.history],
-        'resources': resources, 'question_catalog': QUESTIONS,
-    }, ChatSelection)
-    if selection.urgent:
-        return urgent_response(data.language, resources)
+    previous_replies = [m.content for m in data.history if m.role == 'assistant']
+    asked_ids = [qid for qid, translations in QUESTIONS.items()
+                 if any(q in reply for q in translations for reply in previous_replies)]
+    user_messages = [m.content for m in data.history if m.role == 'user'] + [data.message]
+    try:
+        async with asyncio.timeout(38):
+            selection = await provider.generate(provider.CHAT_PROMPT, {
+                'language': data.language, 'message': data.message,
+                # Never recycle the assistant's medical warnings as symptom history.
+                'history': [m.model_dump() for m in data.history if m.role == 'user'],
+                'has_previous_reply': bool(previous_replies), 'previous_question_ids': asked_ids,
+                'resources': resources, 'question_catalog': QUESTIONS,
+            }, ChatSelection)
+            if selection.urgent:
+                review = await provider.generate(provider.URGENCY_REVIEW_PROMPT,
+                    {'user_messages': user_messages}, UrgencyReview)
+                if review.decision == 'urgent':
+                    if not review.evidence or any(
+                        not 0 <= e.message_id < len(user_messages) or
+                        e.quote not in user_messages[e.message_id] for e in review.evidence):
+                        raise HTTPException(502, detail={'code': 'invalid_provider_output'})
+                    return urgent_response(data.language, resources)
+                if review.decision == 'clarify_focus':
+                    return ChatResponse(response=localized(QUESTIONS['focus_clarification'], data.language),
+                                        sources=[], urgent=False, mode='ai')
+    except TimeoutError:
+        raise HTTPException(504, detail={'code': 'provider_timeout'}) from None
     if selection.boundary:
         return ChatResponse(response=localized(BOUNDARY_TEXT, data.language), sources=[], mode='boundary')
     allowed = {r['id']: r for r in resources}

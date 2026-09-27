@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app import main, provider
 from app.content import RESOURCES, retrieve
-from app.schemas import ChatSelection, SummarySelection, SummaryAudit
+from app.schemas import ChatSelection, SummarySelection, SummaryAudit, UrgencyReview
 
 @pytest.fixture
 def client(monkeypatch):
@@ -97,8 +97,9 @@ def test_medical_boundary(client, monkeypatch, text):
     mock.assert_not_called()
 
 def test_model_urgency_and_boundary(client, monkeypatch):
-    fake(monkeypatch, selected(urgent=True))
-    assert client.post('/api/chat', json={'message':'Something feels terribly wrong'}).json()['urgent']
+    monkeypatch.setattr(provider, 'generate', AsyncMock(side_effect=[selected(urgent=True),
+        UrgencyReview(decision='urgent', evidence=[{'message_id':0,'quote':'Suddenly I do not know where I am'}])]))
+    assert client.post('/api/chat', json={'message':'Suddenly I do not know where I am'}).json()['urgent']
     fake(monkeypatch, selected(boundary=True))
     assert client.post('/api/chat', json={'message':'Tell me which tablet is best'}).json()['mode'] == 'boundary'
 
@@ -242,3 +243,40 @@ def test_followup_keeps_new_topic_evidence(client, monkeypatch):
     assert 'Headaches have different causes.' not in second['response']
     assert 'Have you noticed any other symptoms?' in second['response']
     assert 'When did it start' not in second['response']
+
+
+def test_focus_ambiguity_gets_clarification_not_alarm(client, monkeypatch):
+    warning='General information: confusion and sudden severe headaches need help.'
+    message='Synthetic case: mild pain, three out of ten, but hard to focus on homework.'
+    mock=AsyncMock(side_effect=[selected(urgent=True),UrgencyReview(decision='clarify_focus',evidence=[])])
+    monkeypatch.setattr(provider,'generate',mock)
+    response=client.post('/api/chat',json={'message':message,'history':[
+        {'role':'user','content':'A mild headache'}, {'role':'assistant','content':warning}]}).json()
+    assert not response['urgent'] and 'newly confused' in response['response']
+    draft_input=mock.call_args_list[0].args[1]
+    assert all(m['role']=='user' for m in draft_input['history'])
+    review_input=mock.call_args_list[1].args[1]
+    assert set(review_input)=={'user_messages'}
+    assert warning not in str(review_input) and 'resources' not in review_input
+
+
+def test_urgency_cannot_cite_assistant_warning(client, monkeypatch):
+    monkeypatch.setattr(provider,'generate',AsyncMock(side_effect=[selected(urgent=True),
+        UrgencyReview(decision='urgent',evidence=[{'message_id':0,'quote':'sudden confusion'}])]))
+    r=client.post('/api/chat',json={'message':'Mild headache','history':[
+        {'role':'assistant','content':'sudden confusion'}]})
+    assert r.status_code==502
+
+
+def test_review_can_discard_unsupported_flag(client, monkeypatch):
+    monkeypatch.setattr(provider,'generate',AsyncMock(side_effect=[selected(urgent=True),
+        UrgencyReview(decision='continue',evidence=[])]))
+    body=client.post('/api/chat',json={'message':'A mild headache'}).json()
+    assert not body['urgent'] and body['mode']=='ai'
+
+
+def test_low_pain_does_not_override_red_flag(client, monkeypatch):
+    mock=fake(monkeypatch,selected())
+    body=client.post('/api/chat',json={'message':'Pain is only 2/10 but I cannot breathe'}).json()
+    assert body['urgent']
+    mock.assert_not_called()

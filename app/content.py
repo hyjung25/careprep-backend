@@ -7,6 +7,7 @@ RESOURCES = json.loads(Path(__file__).with_name('resources.json').read_text())
 BY_ID = {r['id']: r for r in RESOURCES}
 
 QUESTIONS = {
+ 'focus_clarification': ('When you say you cannot focus, do you mean the discomfort is distracting you from a task, or that you are newly confused or unsure where you are?', '집중이 안 된다는 말씀이 불편함 때문에 하던 일에 집중하기 어렵다는 뜻인가요, 아니면 갑자기 혼란스럽거나 현재 어디에 있는지 모르겠다는 뜻인가요?'),
  'location': ('Where do you feel it?', '어느 부위에 증상이 있나요?'),
  'onset': ('When did it start, and is it constant or does it come and go?', '언제 시작되었나요? 계속되나요, 아니면 나타났다 사라지나요?'),
  'severity': ('How strong does it feel in your own words, and how does it affect your day?', '본인의 표현으로 어느 정도 불편한가요? 일상에 어떤 영향을 주나요?'),
