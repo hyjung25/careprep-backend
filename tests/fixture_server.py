@@ -5,7 +5,7 @@ import asyncio
 import json
 from fastapi import HTTPException
 from app import main, provider
-from app.schemas import ChatSelection, SummarySelection
+from app.schemas import ChatSelection, SummarySelection, SummaryAudit
 
 async def fixture(prompt, payload, model_class):
     await asyncio.sleep(0.3)
@@ -18,10 +18,14 @@ async def fixture(prompt, payload, model_class):
         return ChatSelection(urgent=False,boundary=False,
             passage_ids=[r['id'] for r in payload['resources']],
             question_ids=['severity'] if not payload['history'] else ['associated'])
+    if model_class is SummaryAudit:
+        return SummaryAudit(valid=True)
     users = payload['user_messages']
-    return SummarySelection(main_concern=[0],onset_duration=[0],
-        severity_progression=[1] if len(users)>1 else [], associated_symptoms=[],
-        medications_allergies=[],clinician_questions=[])
+    def fact(index):
+        return {'text': users[index][:240], 'evidence':[{'message_id':index,'quote':users[index]}]}
+    return SummarySelection(main_concern=[fact(0)],onset_duration=[],
+        severity_progression=[fact(1)] if len(users)>1 else [], associated_symptoms=[],
+        medications_allergies=[],relevant_context=[],clinician_questions=[])
 
 provider.generate = fixture
 

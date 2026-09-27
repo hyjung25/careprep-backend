@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app import main, provider
 from app.content import RESOURCES, retrieve
-from app.schemas import ChatSelection, SummarySelection
+from app.schemas import ChatSelection, SummarySelection, SummaryAudit
 
 @pytest.fixture
 def client(monkeypatch):
@@ -112,22 +112,53 @@ def test_korean_and_assistant_history_untrusted(client, monkeypatch):
 def summary_selection(**kwargs):
     return SummarySelection(**dict({field:[] for field in SummarySelection.model_fields}, **kwargs))
 
-def test_summary_whole_quotes_only_and_unknowns(client, monkeypatch):
-    mock = fake(monkeypatch, summary_selection(main_concern=[0], onset_duration=[0], medications_allergies=[1]))
-    users = ['I have a cough since Monday.', 'I do not take aspirin.']
-    body = client.post('/api/summary', json={'history':[
-        {'role':'user','content':users[0]}, {'role':'assistant','content':'You have pneumonia'},
-        {'role':'user','content':users[1]}]}).json()
-    quotes = [q for s in body['sections'] for q in s['quotes']]
-    assert all(q in users for q in quotes)
-    assert users[1] in body['summary'] and 'pneumonia' not in body['summary']
-    assert 'Associated symptoms' in body['important_unknowns']
-    assert mock.call_args.args[1]['user_messages'] == users
+def fact(text, quote, index=0):
+    return {'text':text,'evidence':[{'message_id':index,'quote':quote}]}
 
-def test_summary_fabricated_index_rejected(client, monkeypatch):
-    fake(monkeypatch, summary_selection(main_concern=[8]))
+def test_summary_concise_notes_and_evidence(client, monkeypatch):
+    users = ['I have a cough since Monday.', 'I do not take aspirin.']
+    draft = summary_selection(main_concern=[fact('Cough.',users[0])],
+        onset_duration=[fact('Started Monday.',users[0])],
+        medications_allergies=[fact('Reports not taking aspirin.',users[1],1)])
+    mock = AsyncMock(side_effect=[draft, SummaryAudit(valid=True)])
+    monkeypatch.setattr(provider, 'generate', mock)
+    result = client.post('/api/summary', json={'history':[
+        {'role':'user','content':users[0]}, {'role':'assistant','content':'You have pneumonia'},
+        {'role':'user','content':users[1]}]})
+    assert result.status_code == 200
+    body = result.json()
+    assert 'Started Monday.' in body['summary'] and 'pneumonia' not in body['summary']
+    assert 'Reports not taking aspirin.' in body['summary']
+    assert 'Associated symptoms' in body['important_unknowns']
+    assert body['sections'][0]['quotes'] == [users[0]]
+    assert mock.call_args_list[0].args[1]['user_messages'] == users
+    assert mock.call_args_list[1].args[1]['user_messages'] == users
+
+@pytest.mark.parametrize('bad_fact',[
+    fact('Cough.','a cough',8), fact('Cough.','fabricated quote'),
+])
+def test_summary_invalid_evidence_rejected(client, monkeypatch, bad_fact):
+    fake(monkeypatch, summary_selection(main_concern=[bad_fact]))
     r = client.post('/api/summary', json={'history':[{'role':'user','content':'a cough'}]})
     assert r.status_code == 502
+
+def test_summary_auditor_rejects_negation_loss(client, monkeypatch):
+    draft = summary_selection(medications_allergies=[fact('Takes aspirin.','aspirin')])
+    monkeypatch.setattr(provider,'generate',AsyncMock(side_effect=[draft,SummaryAudit(valid=False)]))
+    r=client.post('/api/summary',json={'history':[{'role':'user','content':'I do not take aspirin.'}]})
+    assert r.status_code == 502 and 'Takes aspirin' not in r.text
+
+def test_summary_context_is_not_clinician_question(client, monkeypatch):
+    message='Synthetic example: I drank more wine than usual on Monday. What now?'
+    draft=summary_selection(relevant_context=[fact('Reports drinking more wine than usual on Monday.',
+        'I drank more wine than usual on Monday.')])
+    monkeypatch.setattr(provider,'generate',AsyncMock(side_effect=[draft,SummaryAudit(valid=True)]))
+    body=client.post('/api/summary',json={'history':[{'role':'user','content':message}]}).json()
+    assert 'Relevant context' in body['summary']
+    assert 'No visit questions specified yet.' in body['summary']
+    assert body['summary'].count('Still to clarify:') == 1
+    assert 'Not provided' not in body['summary']
+    assert 'hangover' not in body['summary']
 
 @pytest.mark.parametrize('history', [[], [{'role':'assistant','content':'a cough'}]])
 def test_summary_needs_user(client, history):

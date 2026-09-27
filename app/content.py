@@ -18,9 +18,10 @@ QUESTIONS = {
 FIELDS = {
  'main_concern': ('Main concern', '주요 증상'),
  'onset_duration': ('Onset and duration', '시작 시점과 지속 기간'),
- 'severity_progression': ('User-described severity and progression', '사용자가 표현한 정도와 변화'),
+ 'severity_progression': ('Severity and changes', '증상의 정도와 변화'),
  'associated_symptoms': ('Associated symptoms', '동반 증상'),
- 'medications_allergies': ('Medications / allergies volunteered', '자발적으로 알린 약 / 알레르기'),
+ 'medications_allergies': ('Medications and allergies', '복용약과 알레르기'),
+ 'relevant_context': ('Relevant context', '관련 상황'),
  'clinician_questions': ('Questions for the clinician', '의료진에게 할 질문'),
 }
 

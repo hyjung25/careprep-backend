@@ -1,4 +1,5 @@
 import os
+import asyncio
 import time
 from collections import deque
 from dotenv import load_dotenv
@@ -8,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from . import provider
 from .schemas import (ChatRequest, ChatResponse, ChatSelection, SummaryRequest,
-                      SummaryResponse, SummarySelection, SummarySection)
+                      SummaryResponse, SummarySelection, SummarySection, SummaryAudit)
 from .content import (QUESTIONS, FIELDS, URGENT, BOUNDARY, BOUNDARY_TEXT, URGENT_TEXT,
                       INSUFFICIENT, localized, retrieve, source)
 
@@ -160,25 +161,41 @@ async def chat(data: ChatRequest, request: Request):
 async def summary(data: SummaryRequest, request: Request):
     rate_check(request)
     users = [m.content for m in data.history if m.role == 'user']
-    selection = await provider.generate(provider.SUMMARY_PROMPT,
-        {'language': data.language, 'user_messages': users}, SummarySelection)
-    sections, unknowns = [], []
-    text = [localized(('Visit notes · user-reported, not a diagnosis', '진료 메모 · 사용자 진술이며 진단이 아닙니다'), data.language),
-            localized(('Whole messages are quoted to preserve context. Check the grouping and bring corrections to your clinician. Only the last 12 conversation messages are included.',
-                       '문맥 보존을 위해 메시지 전체를 인용합니다. 분류를 확인하고 의료진에게 수정 내용을 알려주세요. 최근 대화 12개만 포함됩니다.'), data.language)]
-    for key, ids in selection.model_dump().items():
-        if any(type(i) is not int or not 0 <= i < len(users) for i in ids):
-            raise HTTPException(502, detail={'code': 'invalid_provider_output'})
-        ids = list(dict.fromkeys(ids))
+    try:
+        # One total deadline for drafting + independent grounding review.
+        async with asyncio.timeout(38):
+            selection = await provider.generate(provider.SUMMARY_PROMPT,
+                {'language': data.language, 'user_messages': users}, SummarySelection)
+            for facts in selection.model_dump().values():
+                for fact in facts:
+                    for evidence in fact['evidence']:
+                        i, quote = evidence['message_id'], evidence['quote']
+                        if type(i) is not int or not 0 <= i < len(users) or quote not in users[i]:
+                            raise HTTPException(502, detail={'code': 'invalid_provider_output'})
+            audit = await provider.generate(provider.SUMMARY_AUDIT_PROMPT,
+                {'user_messages': users, 'draft': selection.model_dump()}, SummaryAudit)
+            if not audit.valid:
+                raise HTTPException(502, detail={'code': 'invalid_provider_output'})
+    except TimeoutError:
+        raise HTTPException(504, detail={'code': 'provider_timeout'}) from None
+    sections, unknowns, text = [], [], [localized(('Visit summary · user-reported', '진료 요약 · 사용자 진술'), data.language)]
+    for key, facts in selection.model_dump().items():
         title = localized(FIELDS[key], data.language)
-        quotes = [users[i] for i in ids]
-        sections.append(SummarySection(key=key, title=title, quotes=quotes, message_ids=ids))
-        if not quotes:
+        notes = list(dict.fromkeys(f['text'] for f in facts))
+        evidence = [e for f in facts for e in f['evidence']]
+        sections.append(SummarySection(key=key, title=title, notes=notes,
+            quotes=[e['quote'] for e in evidence], message_ids=[e['message_id'] for e in evidence]))
+        if notes:
+            text.append(title + '\n' + '\n'.join('- ' + note for note in notes))
+        elif key not in ('relevant_context', 'clinician_questions'):
             unknowns.append(title)
-        text.append(title + '\n' + ('\n'.join('“' + q + '”' for q in quotes) if quotes else
-                    localized(('Not provided', '제공되지 않음'), data.language)))
-    text.append(localized(('Important unknowns', '확인이 필요한 정보'), data.language) + '\n' +
-                (', '.join(unknowns) or localized(('No empty categories; completeness is not established.', '빈 항목은 없지만 정보의 완전성이 확인된 것은 아닙니다.'), data.language)))
+    if not selection.clinician_questions:
+        text.append(localized(('Questions for the clinician\nNo visit questions specified yet.',
+                                '의료진에게 할 질문\n아직 진료 때 할 질문을 지정하지 않았습니다.'), data.language))
+    if unknowns:
+        text.append(localized(('Still to clarify: ', '추가 확인: '), data.language) + '; '.join(unknowns))
+    text.append(localized(('Review before sharing. Based on the last 12 messages; not a diagnosis.',
+                            '공유 전 확인하세요. 최근 메시지 12개를 바탕으로 하며 진단이 아닙니다.'), data.language))
     notice = localized(URGENT_TEXT, data.language) if URGENT.search('\n'.join(users)) else None
     if notice:
         text.insert(0, notice)

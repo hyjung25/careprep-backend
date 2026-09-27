@@ -39,3 +39,9 @@ The authenticated GitHub token can create public repositories but cannot push `.
 ## Follow-up request: repetitive answers (2026-09-27)
 
 The user reported “똑같은답만 나오는데” with examples of repeated source paragraphs. Updated backend rendering to suppress previously shown passages and already-asked questions, acknowledge new user wording, and limit follow-ups to one question. Updated the actual chat prompt to recognize volunteered location/timing/severity, skip already-asked questions, and avoid inferring a causal connection. Added two regression checks; 42 software checks pass. Live API credentials were subsequently configured locally (never committed); synthetic live chat and summary checks succeeded after restarting from the moved project folder.
+
+## Summary redesign (2026-09-27)
+
+The user called the whole-message summary unusable and showed duplicated symptom text, omitted context, and a generic advice request mislabeled as a clinician question. Replaced whole-message selection with concise per-field paraphrases carrying verbatim evidence and message IDs. Added relevant context; consolidated empty clinical categories into one missing-information line; added expandable original evidence in the UI. Added a separate grounding-review prompt that rejects unsupported facts, omitted context, lost negations, diagnoses/advice, and mislabeled clinician questions. Exact current prompts are in the backend provider module; earlier whole-message instructions in this log describe the initial implementation and are superseded.
+
+45 synthetic backend checks passed. Two live synthetic summary checks (English and Korean) returned HTTP 200, retained volunteered context, preserved medication negation, and did not convert chatbot advice requests into clinician questions. These are software smoke tests, not medical validation or a guarantee of model accuracy. Live credentials remain only in the ignored backend `.env`.

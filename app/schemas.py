@@ -42,6 +42,7 @@ class ChatResponse(StrictModel):
 class SummarySection(StrictModel):
     key: str
     title: str
+    notes: list[str]
     quotes: list[str]
     message_ids: list[int]
 
@@ -59,11 +60,22 @@ class ChatSelection(StrictModel):
     passage_ids: list[str] = Field(max_length=2)
     question_ids: list[QuestionID] = Field(max_length=2)
 
+class Evidence(StrictModel):
+    message_id: int
+    quote: Annotated[str, StringConstraints(min_length=1, max_length=1200)]
+
+class SummaryFact(StrictModel):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=240)]
+    evidence: list[Evidence] = Field(min_length=1, max_length=3)
+
 class SummarySelection(StrictModel):
-    # Only whole user-message indices are accepted, preserving negations and context.
-    main_concern: list[int] = Field(max_length=2)
-    onset_duration: list[int] = Field(max_length=2)
-    severity_progression: list[int] = Field(max_length=2)
-    associated_symptoms: list[int] = Field(max_length=2)
-    medications_allergies: list[int] = Field(max_length=2)
-    clinician_questions: list[int] = Field(max_length=2)
+    main_concern: list[SummaryFact] = Field(max_length=2)
+    onset_duration: list[SummaryFact] = Field(max_length=2)
+    severity_progression: list[SummaryFact] = Field(max_length=2)
+    associated_symptoms: list[SummaryFact] = Field(max_length=2)
+    medications_allergies: list[SummaryFact] = Field(max_length=2)
+    relevant_context: list[SummaryFact] = Field(max_length=2)
+    clinician_questions: list[SummaryFact] = Field(max_length=2)
+
+class SummaryAudit(StrictModel):
+    valid: bool
