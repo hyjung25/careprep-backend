@@ -121,15 +121,39 @@ async def chat(data: ChatRequest, request: Request):
     if any(s not in allowed for s in selection.passage_ids):
         raise HTTPException(502, detail={'code': 'invalid_provider_output'})
     chosen = [allowed[k] for k in dict.fromkeys(selection.passage_ids)]
-    parts = [localized(('General information', '일반적인 정보'), data.language)]
-    parts += [r[data.language] + ' [' + r['id'] + ']' for r in chosen]
-    if not chosen:
+    previous_replies = [m.content for m in data.history if m.role == 'assistant']
+    # Compare actual rendered passages, not user-supplied citation markers alone.
+    fresh = [r for r in chosen if not any(
+        r['en'] in reply or r['ko'] in reply for reply in previous_replies)]
+    asked = {qid for qid, translations in QUESTIONS.items()
+             if any(q in reply for q in translations for reply in previous_replies)}
+    questions = [q for q in dict.fromkeys(selection.question_ids) if q not in asked]
+    questions = questions[:1 if previous_replies else 2]
+    parts = []
+    if previous_replies:
+        if len(data.message) <= 400:
+            parts.append(localized(('Added to your visit notes, in your words:',
+                                    '진료 메모에 다음 내용을 본인의 표현 그대로 반영할게요:'), data.language)
+                         + '\n“' + data.message + '”')
+        else:
+            parts.append(localized(('Thanks for the additional detail. I’ll use it when organizing your visit notes.',
+                                    '자세히 알려주셔서 감사합니다. 진료 메모를 정리할 때 반영할게요.'), data.language))
+    if fresh:
+        parts.append(localized(('General information', '일반적인 정보'), data.language))
+        parts.extend(r[data.language] + ' [' + r['id'] + ']' for r in fresh)
+    elif chosen:
+        parts.append(localized(('Reference for this topic:', '이 주제의 참고 자료:'), data.language)
+                     + ' ' + ' '.join('[' + r['id'] + ']' for r in chosen))
+    if not chosen and not previous_replies:
         parts.append(localized(INSUFFICIENT, data.language))
-    if selection.question_ids:
-        parts.append(localized(('To understand what you want to discuss:', '진료 때 이야기할 내용을 더 알아볼게요:'), data.language))
-        parts.extend(localized(QUESTIONS[q], data.language) for q in dict.fromkeys(selection.question_ids))
+    elif not chosen:
+        parts.append(localized(('I don’t have additional source-backed guidance for that detail.',
+                                '추가로 알려주신 내용에 대해 출처로 뒷받침할 수 있는 안내가 충분하지 않습니다.'), data.language))
+    if questions:
+        parts.extend(localized(QUESTIONS[q], data.language) for q in questions)
     else:
-        parts.append(localized(('You can generate your visit summary whenever you are ready.', '준비되면 진료 요약을 만들어 보세요.'), data.language))
+        parts.append(localized(('You can add anything else you want the clinician to know, or generate your visit summary.',
+                                '의료진에게 알리고 싶은 내용을 더 말씀하시거나 진료 요약을 만들어 보세요.'), data.language))
     return ChatResponse(response='\n\n'.join(parts), sources=[source(r) for r in chosen], mode='ai')
 
 @api.post('/api/summary', response_model=SummaryResponse)

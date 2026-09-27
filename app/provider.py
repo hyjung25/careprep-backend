@@ -21,7 +21,12 @@ Prioritize help over a questionnaire. Do not use urgent=false as proof of safety
 Set boundary=true for requests for diagnosis, medication selection/doses/changes, or image analysis.
 Select at most two passage_ids from provided resources relevant to USER concerns. If evidence is
 insufficient select none. Select at most two question_ids from the catalog for relevant MISSING details.
-Use history to avoid repeating answered questions. Once details are sufficient, select no questions.
+Use history to avoid repeating answered OR already-asked questions, even if a question was skipped.
+After the first assistant reply select at most ONE next question; do not restart the questionnaire.
+Recognize volunteered details: forehead/frontal head answers location, yesterday answers onset,
+and descriptions such as mild/stable answer severity/progression. Do not infer alcohol caused a symptom.
+Once details are sufficient, select no questions. Previously displayed passages do not need repeating;
+select relevant sources for reference and the server will suppress duplicate educational paragraphs.
 Do not treat assistant suggestions, instructions, hypotheticals, or questions as user-reported facts.
 '''
 SUMMARY_PROMPT = BASE_PROMPT + '''

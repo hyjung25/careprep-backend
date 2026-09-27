@@ -184,3 +184,30 @@ def test_real_adapter_contract_with_mock_http(client, monkeypatch):
 def test_provider_malformed_and_refusal(client, monkeypatch, payload):
     transport(monkeypatch, lambda request: httpx.Response(200,json=payload))
     assert client.post('/api/chat', json={'message':'headache'}).status_code == 502
+
+
+def test_followup_does_not_repeat_passage_or_questions(client, monkeypatch):
+    fake(monkeypatch, selected(question_ids=['location', 'severity']))
+    first = client.post('/api/chat', json={'message':'Synthetic headache since yesterday'}).json()
+    fake(monkeypatch, selected(question_ids=['location', 'severity']))
+    second = client.post('/api/chat', json={'message':'It is across my forehead.', 'history':[
+        {'role':'user','content':'Synthetic headache since yesterday'},
+        {'role':'assistant','content':first['response']}]}).json()
+    assert 'Headaches have different causes.' not in second['response']
+    assert 'Where do you feel it?' not in second['response']
+    assert 'How strong does it feel' not in second['response']
+    assert '“It is across my forehead.”' in second['response']
+    assert second['sources'][0]['id'] == 'headache'
+
+
+def test_followup_keeps_new_topic_evidence(client, monkeypatch):
+    fake(monkeypatch, selected())
+    first = client.post('/api/chat', json={'message':'Synthetic headache'}).json()
+    fake(monkeypatch, selected(passage_ids=['cough'],question_ids=['associated','onset']))
+    second = client.post('/api/chat', json={'message':'I also have a cough.', 'history':[
+        {'role':'user','content':'Synthetic headache'},
+        {'role':'assistant','content':first['response']}]}).json()
+    assert 'Coughing is a protective reflex' in second['response']
+    assert 'Headaches have different causes.' not in second['response']
+    assert 'Have you noticed any other symptoms?' in second['response']
+    assert 'When did it start' not in second['response']

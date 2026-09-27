@@ -152,3 +152,7 @@ uvicorn tests.fixture_server:app --host 127.0.0.1 --port 8001 --no-access-log
 Point frontend connection settings to `http://127.0.0.1:8001`. The UI visibly labels fixture outputs. Never deploy that module. The Render configuration runs `app.main:app` exclusively.
 
 See [prompt_log.md](prompt_log.md) and the frontend's demo/submission documents for assignment deliverables.
+
+## Conversation update (2026-09-27)
+
+Follow-up replies acknowledge the current message using its exact wording (up to 400 characters; longer messages receive a brief acknowledgment). Previously rendered educational passages and already-asked catalog questions are suppressed within the bounded history. Follow-ups ask at most one new question, and new topics still receive their own retrieved passages. Relevant source links remain available. This reduces repetition while preserving the constrained medical response design. The app does not infer a symptom’s cause from volunteered context.

@@ -35,3 +35,7 @@ See the frontend `VERIFICATION.md` for executed checks and remaining credential/
 ## Publication adjustment
 
 The authenticated GitHub token can create public repositories but cannot push `.github/workflows` without workflow scope. Optional workflow files were kept as `deployment/*.example.yml`; Pages uses branch-based deployment with existing authorization. No token scopes were expanded.
+
+## Follow-up request: repetitive answers (2026-09-27)
+
+The user reported “똑같은답만 나오는데” with examples of repeated source paragraphs. Updated backend rendering to suppress previously shown passages and already-asked questions, acknowledge new user wording, and limit follow-ups to one question. Updated the actual chat prompt to recognize volunteered location/timing/severity, skip already-asked questions, and avoid inferring a causal connection. Added two regression checks; 42 software checks pass. Live API credentials were subsequently configured locally (never committed); synthetic live chat and summary checks succeeded after restarting from the moved project folder.
